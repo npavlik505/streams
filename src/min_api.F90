@@ -39,6 +39,22 @@ subroutine wrap_copy_cpu_to_gpu()
     call copy_cpu_to_gpu()
 end subroutine
 
+! copy the array for the blowing BC 
+! CPU -> GPU
+!
+! this subroutine must be called on ALL mpi procs
+subroutine wrap_copy_blowing_bc_to_gpu()
+    call copy_blowing_bc_to_gpu()
+end subroutine
+
+! copy the array for the blowing BC 
+! GPU -> CPU
+!
+! this subroutine must be called on ALL mpi procs
+subroutine wrap_copy_blowing_bc_to_cpu()
+    call copy_blowing_bc_to_cpu()
+end subroutine
+
 ! calculate wall shear stress
 ! this subtoutine is a HEAVILY chopped down version of `writestatbl`
 ! in writestatbl.f90
@@ -81,4 +97,31 @@ subroutine wrap_tauw_calculate()
         end do
     end if
 !
+end subroutine
+
+! calculate dissipation rate. See inner subroutine documentation.
+! after calculation, the value is stored in `dissipation_rate` in mod_streams
+subroutine wrap_dissipation_calculation()
+    implicit none
+
+    call dissipation_calculation()
+end subroutine
+
+! calculate energy. See inner subroutine documentation.
+! after calculation, the value is stored in `energy` in mod_streams
+subroutine wrap_energy_calculation()
+    implicit none
+
+    call energy_calculation()
+end subroutine
+
+! deallocate all fortran arrays
+! note that if the program is exiting, all arrays will be cleaned up by the OS.
+! however, if you wish to restart the solver, the solver will attempt to allocate new arrays
+! where existing arrays already exist. Therefore, it makes the most sense to simple deallocate the
+! older arrays.
+subroutine wrap_deallocate_all()
+    implicit none
+
+    call deallocate_all()
 end subroutine

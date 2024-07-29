@@ -14,6 +14,7 @@ streams.wrap_startmpi()
 from mpi4py import MPI
 import json
 import math
+import importlib
 
 #
 # initialize some global variables
@@ -28,6 +29,7 @@ import io_utils
 import numpy as np
 from config import Config
 import utils
+import jet_actuator
 
 #
 # Load in config, initialize
@@ -43,14 +45,20 @@ with open("/input/input.json", "r") as f:
 span_average = np.zeros([5, config.nx_mpi(), config.ny_mpi()], dtype=np.float64)
 temp_field = np.zeros((config.nx_mpi(), config.ny_mpi(), config.nz_mpi()), dtype=np.float64)
 dt_array = np.zeros(1)
+amplitude_array = np.zeros(1)
 time_array = np.zeros(1)
+dissipation_rate_array = np.zeros(1)
+energy_array = np.zeros(1)
 
 #
 # execute streams setup routines
 #
 
-streams.wrap_setup()
-streams.wrap_init_solver()
+def setup_solver():
+    streams.wrap_setup()
+    streams.wrap_init_solver()
+
+setup_solver()
 
 # initialize files
 
@@ -73,14 +81,19 @@ else:
 velocity_dset = io_utils.VectorField3D(flowfields, [5, *grid_shape], flowfield_writes, "velocity", rank)
 flowfield_time_dset = io_utils.Scalar1D(flowfields, [1], flowfield_writes, "time", rank)
 
-# span average files 
+# span average files
 numwrites = int(math.ceil(config.temporal.num_iter / config.temporal.span_average_io_steps))
+
+# this is rho, u, v, w, E (already normalized from the rho u, rho v... values from streams)
 span_average_dset = io_utils.VectorFieldXY2D(span_averages, [5, *span_average_shape], numwrites, "span_average", rank)
 shear_stress_dset = io_utils.ScalarFieldX1D(span_averages, [config.grid.nx], numwrites, "shear_stress", rank)
 span_average_time_dset = io_utils.Scalar0D(span_averages, [1], numwrites, "time", rank)
+dissipation_rate_dset = io_utils.Scalar0D(span_averages, [1], numwrites, "dissipation_rate", rank)
+energy_dset = io_utils.Scalar0D(span_averages, [1], numwrites, "energy", rank)
 
 # trajectories files
 dt_dset = io_utils.Scalar0D(trajectories, [1], config.temporal.num_iter, "dt", rank)
+amplitude_dset = io_utils.Scalar0D(trajectories, [1], config.temporal.num_iter, "jet_amplitude", rank)
 
 # mesh datasets
 x_mesh_dset = io_utils.Scalar1DX(mesh_h5, [config.grid.nx], 1, "x_grid", rank)
@@ -99,8 +112,13 @@ z_mesh_dset.write_array(z_mesh)
 # Main solver loop, we start time stepping until we are done
 #
 
+actuator = jet_actuator.init_actuator(rank, config)
+
 time = 0
 for i in range(config.temporal.num_iter):
+
+    amplitude = actuator.step_actuator(time)
+
     streams.wrap_step_solver()
 
     time += streams.mod_streams.dtglobal
@@ -121,9 +139,26 @@ for i in range(config.temporal.num_iter):
         # write the time at which this data was collected
         span_average_time_dset.write_array(time_array)
 
+        # calculate dissipation rate on GPU and store the result
+        streams.wrap_dissipation_calculation()
+        dissipation_rate_array[:] = streams.mod_streams.dissipation_rate
+        dissipation_rate_dset.write_array(dissipation_rate_array)
+        utils.hprint(f"dissipation is {dissipation_rate_array[0]}")
+
+        # calculate energy on GPU and store the result
+        streams.wrap_energy_calculation()
+        energy_array[:] = streams.mod_streams.energy
+        energy_dset.write_array(energy_array)
+
+        utils.hprint(f"energy is {energy_array[0]}")
+
     # save dt information for every step
     dt_array[:] = streams.mod_streams.dtglobal
     dt_dset.write_array(dt_array)
+
+    # save amplitude at every step
+    amplitude_array[:] = amplitude
+    amplitude_dset.write_array(amplitude_array)
 
     if not (config.temporal.full_flowfield_io_steps is None):
         if (i % config.temporal.full_flowfield_io_steps) == 0:
@@ -133,6 +168,17 @@ for i in range(config.temporal.num_iter):
 
             # write the time at which this data was collected
             flowfield_time_dset.write_array(time_array)
+
+
+    if i == 5:
+        print("reloading python module")
+        streams.wrap_finalize_solver()
+        #streams.wrap_finalize()
+        del streams
+        import libstreams as streams
+        #importlib.reload(streams)
+        #streams.wrap_startmpi()
+        setup_solver()
 
 #
 # wrap up execution of solver

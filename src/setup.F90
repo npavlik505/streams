@@ -4,6 +4,8 @@ subroutine setup
 !
  use mod_streams
  implicit none
+
+! find out the dimensions of the blowing slot
 !
 !===================================================
  if (masterproc) write(error_unit,*) 'Allocation of variables'
@@ -11,6 +13,12 @@ subroutine setup
 !===================================================
  if (masterproc) write(error_unit,*) 'Reading input'
  call readinp()
+
+! separate allocations after the input files have been read so that 
+! the correct boundary conditions may be established
+ call local_slot_locations()
+ call allocate_blowing_bcs()
+
 !===================================================
  if (idiski==0) then
   if (masterproc) write(*,*) 'Generating mesh'
@@ -30,6 +38,7 @@ subroutine setup
  if (masterproc) write(*,*) 'Initialize field'
  call init()
  call checkdt()
+ call generate_full_fdm_stencil()
 !===================================================
 !
 end subroutine setup

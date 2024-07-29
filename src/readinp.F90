@@ -51,10 +51,9 @@ subroutine readinp
  read (12,*) rand_start
  read (12,*)
  read (12,*)
- read (12,*) save_probe_steps, save_span_average_steps
- read (12,*)
- read (12,*)
- read (12,*) force_sbli_blowing_bc
+ read (12,*) force_sbli_blowing_bc, slot_start_x_global, slot_end_x_global
+
+ write(*,*) "slot bounds", slot_start_x_global, slot_end_x_global
 
  close(12)
 !
@@ -88,9 +87,19 @@ subroutine readinp
  case (1) ! BL
   ibc(1) = ibc_inflow
   ibc(2) = 4 ! Extrapolation + non reflecting treatment
-  ibc(3) = 8 ! Wall + reflecting treatment
+  !ibc(3) = 8 
   ibc(4) = 4
   ibcnr(1) = 1
+
+  if (force_sbli_blowing_bc == 1) then
+      ! use blowing boundary condition
+      ibc(3) = blowing_sbli_boundary_condition
+  else
+      ! use default solver BC
+      ! Wall + reflecting treatment
+      ibc(3) = 8
+  endif
+
  case (2) ! SBLI
   ibc(1) = ibc_inflow
   ibc(2) = 4

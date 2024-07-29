@@ -73,14 +73,60 @@ module mod_streams
  !f2py real*8, dimension(:), allocatable :: tauw_x
  real(mykind), dimension(:), allocatable :: tauw_x
 
- ! the number of solver steps between outputting probe information / span average information
- integer :: save_probe_steps, save_span_average_steps
+ ! this is a 2D array in (X,Z) that determines what the y velocity should be at each coordinate
+ ! it is of dimensions (nx_slot, nz_slot), and nx_slot,nz_slot are set on a per-mpi basis
+ ! meaning that they may be different depending on the location
+ !f2py real*8, dimension(:, :), allocatable :: blowing_bc_slot_velocity
+ real(mykind), dimension(:, :), allocatable :: blowing_bc_slot_velocity
+
+ !f2py intent(hide) :: blowing_bc_slot_velocity_gpu
+ real(mykind), dimension(:, :), allocatable :: blowing_bc_slot_velocity_gpu
+
+ ! nx_slot is the number of points in the x direction that will have the blowing boundary
+ ! condition
+ ! nz_slot is the number of points in the z direction that will have the blowing boundary
+ ! condition
+ ! x_start_slot is the location in x point at which the slot should start. If x_start_slot
+ ! is -1 then the current MPI process should NOT worry about writing any blowing slot information
+ ! since the slot has been placed in another MPI process domain
+
+!f2py integer :: nx_slot, nz_slot, x_start_slot
+ integer :: nx_slot, nz_slot, x_start_slot
+
+ ! same as above (except they are positions instead of lengths), 
+ ! but not set on an MPI basis. Instead, these parameters are set 
+ ! from the config file and the correct `nx_slot`, `ny_slot`, `x_start_slot` are derived from
+ ! these parameters
+
+ !f2py integer :: slot_start_x_global, slot_end_x_global
+ integer :: slot_start_x_global, slot_end_x_global
+
  ! override the default boundary condition on the bottom surface for SBLI conditions
  ! to create a blowing area
  integer :: force_sbli_blowing_bc
  ! boundary condition integer (see bc.f90) to indicate that the bottom boundary
  ! of the SBLI case should be blowing
  integer, parameter :: blowing_sbli_boundary_condition = 11
+
+
+ ! dissipation_rate is calculated in dissipation.F90, subroutine dissipation_calculation
+!f2py real*8 :: dissipation_rate
+ real(mykind) :: dissipation_rate
+
+ ! stencil for computing finite differences on the irregular y mesh
+!f2py real*8, dimension(:, :), allocatable :: fdm_y_stencil
+ real(mykind), dimension(:, :), allocatable :: fdm_y_stencil
+ real(mykind), dimension(:, :), allocatable :: fdm_y_stencil_gpu
+ ! the array we can re-use for calculating a 4th order accurate approximation for the first derivative
+ ! according to 
+ ! Generation of Finite Difference Formulas on Arbitrarily Spaced Grids (Fornberg, 1988)
+ real(mykind), dimension(:, :, :), allocatable :: fdm_individual_stencil
+ real(mykind), dimension(:), allocatable :: fdm_grid_points
+
+ ! energy is calculated in dissipation.F90, subroutine energy_calculation
+!f2py real*8 :: energy
+ real(mykind) :: energy 
+
  integer :: iflow
  integer :: idiski, ndim
  integer :: istore, istore_restart 
@@ -231,6 +277,10 @@ module mod_streams
  attributes(device) :: fhat_trans_gpu, fl_trans_gpu
  attributes(device) :: temperature_trans_gpu
  attributes(device) :: wv_gpu, wv_trans_gpu
+
+ attributes(device) :: blowing_bc_slot_velocity_gpu
+ attributes(device) :: fdm_y_stencil_gpu
+
 !
  ! TODO: this might be problematic
  !f2py intent(hide) :: local_comm, mydev

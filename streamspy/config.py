@@ -1,6 +1,7 @@
 import json
 from typing import Any, Dict, Optional
 import numpy as np
+from enum import Enum, unique
 
 class Length():
     def __init__(self, lx: float, ly: float, lz: float):
@@ -109,13 +110,42 @@ class Physics():
 
         return Physics(mach, reynolds_friction, temp_ratio, visc_type, Tref, turb_inflow)
 
+@unique
+class JetMethod(Enum):
+    none = "None"
+    constant = "Constant"
+    sinusoidal = "Sinusoidal"
+    adaptive = "Adaptive"
+
+class Jet():
+    def __init__(self, jet_method: JetMethod, extra_json: Optional[Dict]):
+        self.jet_method = jet_method
+        self.extra_json = extra_json
+
+    @staticmethod
+    def from_json(json_config: Dict[str, Any]):
+        jet = json_config["blowing_bc"]
+
+        if jet == "None":
+            jet_method_str = "None"
+            extra_json = None
+        else:
+            jet_method_str = list(jet.keys())[0]
+            extra_json = jet[jet_method_str]
+
+        jet_method = JetMethod(jet_method_str)
+        print(jet_method)
+
+        return Jet(jet_method, extra_json)
+
 class Config():
-    def __init__(self, length: Length, grid: Grid, mpi: Mpi, temporal: Temporal, physics: Physics):
+    def __init__(self, length: Length, grid: Grid, mpi: Mpi, temporal: Temporal, physics: Physics, jet: Jet):
         self.length = length
         self.grid = grid
         self.mpi = mpi
         self.temporal = temporal
         self.physics = physics
+        self.jet = jet
 
     @staticmethod
     def from_json(json_config: Dict[str, Any]):
@@ -124,8 +154,9 @@ class Config():
         mpi = Mpi.from_json(json_config)
         temporal = Temporal.from_json(json_config)
         physics = Physics.from_json(json_config)
+        jet = Jet.from_json(json_config)
 
-        return Config(length, grid, mpi, temporal, physics)
+        return Config(length, grid, mpi, temporal, physics, jet)
 
     def x_start(self) -> int:
         return self.grid.ng
@@ -160,3 +191,7 @@ class Config():
                 self.y_start():self.y_end(), \
                 self.z_start():self.z_end()\
         ]
+
+    def local_to_global_x(self, x: int, rank: int):
+        previous_mpi_x = rank * self.nx_mpi();
+        return previous_mpi_x + x
